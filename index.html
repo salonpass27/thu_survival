@@ -1,0 +1,1183 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+    <meta charset="UTF-8">
+    <title>東海生存模擬器 - 完整整合版</title>
+    <style>
+    :root {
+        --primary: #2c3e50; --accent: #e74c3c; --bg: #ecf0f1;
+        --success: #2ecc71; --study: #9b59b6; --money: #e67e22;
+    }
+    body { font-family: "Microsoft JhengHei", sans-serif; background: var(--primary); margin: 0; padding: 0; display: flex; flex-direction: column; height: 100vh; overflow: hidden; color: #333; }
+    
+    /* 登入介面 - 保持原樣 */
+    .auth-container { background: white; padding: 30px; border-radius: 15px; box-shadow: 0 10px 30px rgba(0,0,0,0.5); width: 320px; text-align: center; margin: 100px auto; }
+    .auth-container input, .auth-btn, .auth-container select { width: 100%; padding: 12px; margin: 10px 0; border: 1px solid #ddd; border-radius: 8px; font-size: 1rem; box-sizing: border-box; }
+    .auth-btn { background: #3498db; color: white; border: none; cursor: pointer; font-weight: bold; }
+    
+    #main-game { display: none; flex: 1; flex-direction: row; overflow: hidden; width: 100%; }
+    
+    /* 1. 地圖容器 */
+    .map-section {
+        flex: 1;
+        position: relative;
+        background: #34495e;
+        overflow-y: auto;
+        overflow-x: hidden;
+        padding: 0;
+        display: block;
+    }
+
+    img#main-map {
+        display: block;
+        width: 100%;
+        height: auto;
+        object-fit: contain;
+        cursor: crosshair;
+    }
+
+    .map-wrapper { position: relative; width: 100%; }
+
+    .map-controls {
+        position: sticky;
+        top: 0;
+        z-index: 100;
+        background: rgba(44, 62, 80, 0.8);
+        padding: 8px;
+        text-align: center;
+        width: 100%;
+    }
+
+    .info-overlay {
+        position: absolute;
+        top: 75px;
+        right: 150px; /* 👈 改用 right，確保在任何螢幕都看得到 */
+        background: rgba(135, 206, 235, 0.5);
+        min-width: 170px; /* 👈 瘦身 */
+        padding: 12px 10px;
+        border-radius: 10px;
+        box-shadow: 0 5px 15px rgba(0,0,0,0.3);
+        border-left: 4px solid var(--money);
+        z-index: 50;
+    }
+
+    .info-overlay h4 { margin: 0 0 8px 0; color: #fff; font-size: 0.9rem; }
+    .info-overlay p { margin: 5px 0; font-size: 0.75rem; font-weight: bold; }
+    .info-overlay input { 
+        width: 100%; box-sizing: border-box; font-size: 11px; 
+        padding: 5px; margin-bottom: 5px; border: 1px solid #555; 
+        border-radius: 4px; background: #fff; display: block; 
+    }
+    .game-log {
+    position: absolute; 
+    bottom: 0;
+    right: 400px; 
+    left: auto;
+    width: 480px;       
+    
+    height: auto;
+    max-height: 85px;   
+    
+    background: rgba(255, 255, 255, 0.9); 
+    
+    /* 🌟 核心修改：刪掉這裡的 color: #000，否則它會鎖死所有字體顏色 */
+    /* color: #000; <-- 這行要拿掉 */
+    
+    font-size: 13px;
+    line-height: 1.5;   
+    border-radius: 12px 0 0 0; 
+    padding: 12px 10px 5px 10px; 
+    z-index: 100;       
+    
+    overflow: hidden;   
+    
+    border-top: 1px solid #ccc;
+    border-left: 1px solid #ccc;
+    box-sizing: border-box;
+    transition: max-height 0.4s ease; 
+    cursor: pointer;    
+}
+
+/* 🌟 當點擊展開時，維持原樣 */
+.game-log.expanded {
+    max-height: 400px;  
+    overflow-y: auto;   
+}
+
+/* 🌟 1. 每一行文字的預設狀態 */
+.game-log div, .game-log p {
+    margin: 0 !important;
+    padding: 8px 15px !important; 
+    border-bottom: 1px solid #eee !important;
+    display: block !important;
+    width: 100% !important;
+    box-sizing: border-box !important;
+    
+    /* 這裡設定舊訊息的預設顏色 (灰色) */
+    color: #888; 
+    
+    transition: color 1s; 
+}
+
+/* 🌟 2. 新訊息跳出來時的亮藍色 */
+.new-message-highlight {
+    color: #007bff !important;   /* 強制變亮藍色 */
+    font-weight: bold !important;
+    animation: fadeToOld 4s forwards !important; 
+}
+
+/* 文字顏色動畫 (不動) */
+@keyframes fadeToOld {
+    0% { color: #007bff; }    
+    70% { color: #007bff; }   
+    100% { color: #888; }     
+}
+
+/* 裝飾三角形 (不動) */
+.game-log::before {
+    content: "▲";
+    position: absolute;
+    top: 3px;
+    left: 50%;
+    transform: translateX(-50%);
+    font-size: 9px;
+    color: #999;
+    transition: transform 0.3s;
+}
+
+.game-log.expanded::before {
+    transform: translateX(-50%) rotate(180deg);
+}
+
+    /* 4. 右側儀表板 - 核心修改：加寬灰色地帶 */
+    .dashboard-section { 
+        /* 🌟 只改這裡：從 320px 增加到 350px，往左邊加寬 */
+        width: 350px; 
+        background: var(--bg); 
+        display: flex; 
+        flex-direction: column; 
+        gap: 12px; 
+        /* 🌟 增加一點左右 padding (12px -> 15px)，配合加寬後的比例 */
+        padding: 10px 15px 5px 15px; 
+        box-shadow: -4px 0 15px rgba(0,0,0,0.2); 
+        /* 保持隱藏捲軸 */
+        overflow-y: hidden; 
+    }
+
+    .card { background: white; padding: 10px 10px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
+    
+    .bar-bg { background: #eee; height: 10px; border-radius: 5px; overflow: hidden; margin-top: 5px; position: relative; }
+    .bar-fill { height: 100%; transition: 0.4s; width: 0%; }
+    .study-overwork { background: #c0392b !important; }
+
+    .todo-item { 
+        display: flex; 
+        padding: 3px 0; 
+        border-bottom: 1px solid #f0f0f0; 
+        font-size: 0.85rem; 
+    }
+
+    .schedule-table { width: 100%; border-collapse: collapse; font-size: 0.65rem; table-layout: fixed; }
+    .schedule-table th, .schedule-table td { border: 1px solid #eee; text-align: center; height: 22px; }
+    
+    .schedule-table input { 
+        width: 100%; border: none; text-align: center; 
+        background: transparent; outline: none; 
+        font-size: 0.65rem; 
+        padding: 0; height: 100%;
+    }
+
+    /* 其餘設定維持原樣 */
+    #marker-layer { position: absolute; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none; }
+    .click-area { position: absolute; border-radius: 50%; transform: translate(-50%, -50%); cursor: pointer; pointer-events: auto; z-index: 10; border: none; background: transparent; }
+    .dot-hint { position: absolute; width: 8px; height: 8px; background: var(--accent); border: 1px solid white; border-radius: 50%; transform: translate(-50%, -50%); pointer-events: none; z-index: 15; }
+    .hidden { display: none !important; }
+
+/* 🌟 確保留言板容器高度固定，不影響外層框框 */
+#comment-container {
+    display: flex;
+    flex-direction: column;
+    height: 220px; /* 👈 給它一個固定總高度 */
+}
+
+/* 🌟 讓留言列表佔滿剩餘空間，內容多時自動捲動 */
+#comment-list {
+    flex: 1;           /* 自動伸展填滿容器 */
+    min-height: 100px; /* 最小高度 */
+    overflow-y: auto;  /* 超過就出捲軸 */
+    background: #f9f9f9;
+    padding: 8px;
+    border: 1px solid #eee;
+    border-radius: 8px;
+    font-size: 13px;
+    line-height: 1.4;
+}
+
+/* 🌟 讓輸入區域永遠貼在最下面，不隨內容浮動 */
+#comment-container > div:last-child {
+    flex-shrink: 0;   /* 不准縮小 */
+    margin-top: 10px;
+}
+
+
+</style>
+</head>
+<body>
+<audio id="gameBGM" loop>
+    <source src="bgm.mp3" type="audio/mpeg">
+</audio>
+
+<div id="info-modal" style="
+    display:none; 
+    position:fixed; 
+    top:50%; 
+    left:50%; 
+    transform:translate(-50%, -50%); 
+    background:white; 
+    border-radius:20px; 
+    box-shadow:0 20px 60px rgba(0,0,0,0.7); 
+    z-index:1000; 
+    width: 650px;           /* 寬度大幅增加 */
+    max-width: 90vw; 
+    overflow: hidden;       /* 確保邊角圓潤 */
+    border-top: 12px solid var(--primary);
+">
+    <div style="width: 100%; height: 250px; background: #eee; overflow: hidden; position: relative;">
+        <img id="modal-img" src="" alt="地點照片" style="width: 100%; height: 100%; object-fit: cover; display: none;">
+        <div id="modal-no-img" style="display: flex; justify-content: center; align-items: center; height: 100%; color: #aaa; font-size: 50px;">
+            🏞️
+        </div>
+    </div>
+
+    <div style="padding: 30px;">
+        <h2 id="modal-title" style="margin-top:0; color:var(--primary); border-bottom: 2px solid #eee; padding-bottom: 15px; font-size: 24px;"></h2>
+        
+        <div id="modal-desc" style="
+            font-size:16px; 
+            line-height:1.8; 
+            color:#444; 
+            margin: 20px 0; 
+            min-height: 100px; 
+            max-height: 200px;    /* 限制高度防止文字過多 */
+            overflow-y: auto;      /* 文字過多時顯示捲軸 */
+            white-space: pre-wrap;
+        "></div>
+<div id="comment-container" style="margin-top: 15px; border-top: 2px solid #eee; padding-top: 10px;">
+    <h4 style="margin: 0 0 10px 0; font-size: 16px; color: var(--primary);">💬 校園留言板</h4>
+    <div id="comment-list" style="max-height: 120px; overflow-y: auto; font-size: 13px; background: #f9f9f9; padding: 10px; border-radius: 8px; border: 1px solid #eee;">
+        讀取中...
+    </div>
+    <div style="display: flex; margin-top: 10px; gap: 5px;">
+        <input type="text" id="comment-input" placeholder="留個言吧..." style="flex: 1; padding: 5px; border: 1px solid #ddd; border-radius: 4px;">
+        <button onclick="postComment()" style="background: var(--primary); color: white; border: none; padding: 5px 15px; border-radius: 4px; cursor: pointer;">發送</button>
+    </div>
+</div>
+        
+        <div style="display:flex; justify-content: space-between; align-items: center; margin-top: 30px; padding-top: 20px; border-top: 1px solid #eee;">
+            <a id="modal-map-link" href="#" target="_blank" style="text-decoration:none; color:#3498db; font-weight:bold; font-size:15px; display: flex; align-items: center;">
+                📍 在 Google Maps 查看
+            </a>
+            <button onclick="closeModal()" style="padding:10px 30px; cursor:pointer; background:var(--primary); color:white; border:none; border-radius:8px; font-weight:bold; font-size: 16px;">關閉視窗</button>
+        </div>
+    </div>
+</div>
+
+<div id="modal-overlay" onclick="closeModal()" style="display:none; position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.6); z-index:999; backdrop-filter: blur(4px);"></div>
+    <div class="auth-container" id="auth-box">
+        <h2 id="auth-title">東海生存模擬器</h2>
+        <input type="text" id="acc" placeholder="帳號 (英數)">
+        <input type="password" id="pwd" placeholder="密碼">
+        <div id="reg-only" class="hidden">
+            <select id="mood"><option value="😊">開心 😊</option><option value="🤔">思考 🤔</option><option value="😴">想睡 😴</option></select>
+        </div>
+        <p id="auth-msg" style="color:red; font-size:12px;"></p>
+        <button class="auth-btn" onclick="handleAuth()">進入校園</button>
+        <p onclick="toggleAuth()" style="cursor:pointer; color:#3498db; font-size:14px;">切換 註冊/登入</p>
+    </div>
+
+    <div id="main-game">
+        <div class="map-section" style="position: relative;">
+    <div style="
+        position: absolute; 
+        top: 10px; 
+        left: 730px; 
+        z-index: 100; 
+        color: #ff4d4f; 
+        font-size: 9px; 
+        font-weight: bold;
+        pointer-events: none; 
+        white-space: nowrap;
+        text-shadow: 1px 1px 2px rgba(0,0,0,0.6);
+    ">
+        ⚠️ 本專案僅供學術練習使用，部分圖片引用自 Google Maps 與東海大學官網，版權歸原作者所有。
+    </div>
+
+    <div class="info-overlay">
+        <h4>📅 生存日報</h4>
+        <p>日期：<span id="real-date"></span></p>
+        <p>生存天數：第 <span id="survival-day">1</span> 天</p>
+        <p style="color:var(--money);">每日生活費：+$200</p>
+        
+        <h4 style="margin-top:10px; border-top:1px solid #ddd; padding-top:10px;">🏫 院所建檔</h4>
+        <input type="text" id="course-input" placeholder="課程名稱">
+        <input type="text" id="dept-input" placeholder="對應院所">
+        <button onclick="addCourseDept()" style="width:100%; font-size:11px; cursor:pointer; background:var(--primary); color:white; border:none; border-radius:3px; padding:3px;">新增紀錄</button>
+    </div>
+
+            <div id="admin-controls" style="margin-bottom: 10px;">
+    <button onclick="setMode('view')" ...>👁️ 冒險模式</button>
+    <button onclick="setMode('edit')" ...>🛠️ 編輯地標</button>
+    <button onclick="setMode('path')" ...>🚌 編輯軌道</button>
+    <button onclick="clearBusPath()" ...>🚫 清除軌道</button>
+</div>
+            <div class="map-wrapper">
+    <img src="ABC.png" id="main-map" onclick="mapClicked(event)">
+    <canvas id="bus-canvas" style="position:absolute; top:0; left:0; width:100%; height:100%; pointer-events:none; z-index:5;"></canvas>
+    <div id="marker-layer"></div>
+</div>
+        </div>
+
+        <div class="dashboard-section">
+    <div style="display:flex; justify-content:space-between; align-items:center; gap: 8px;">
+        <strong style="flex-grow: 1;">👤 <span id="p-id"></span></strong>
+        
+        <button id="music-btn" onclick="toggleMusic()" style="font-size:11px; padding: 2px 8px; cursor: pointer;">
+            🔈 音樂：關
+        </button>
+
+        <button onclick="saveAndExit()" style="font-size:11px; padding: 2px 8px; cursor: pointer;">💾 存檔登出</button>
+    </div>
+
+            <div class="card status-card">
+                <div style="display:flex; justify-content:space-between; font-size:12px;"><span>體力</span><span id="energy-info">100/100</span></div>
+                <div class="bar-bg"><div id="energy-bar" class="bar-fill" style="background:var(--success);"></div></div>
+                <div style="display:flex; justify-content:space-between; font-size:12px; margin-top:10px;"><span>學業</span><span id="study-info">0/100</span></div>
+                <div class="bar-bg"><div id="study-bar" class="bar-fill" style="background:var(--study);"></div></div>
+                <div style="text-align:center; color:var(--money); font-weight:bold; margin-top:10px;">錢包：$ <span id="money-val">500</span></div>
+            </div>
+
+            <div class="card todo-section">
+                <h4 style="margin:0 0 10px 0; color:var(--primary);">📌 今日行程 (星期<span id="today-name"></span>)</h4>
+                <div id="todo-list"></div>
+            </div>
+
+            <div class="card schedule-card">
+                <table class="schedule-table">
+                    <thead><tr><th width="30">節</th><th>一</th><th>二</th><th>三</th><th>四</th><th>五</th></tr></thead>
+                    <tbody id="schedule-body"></tbody>
+                </table>
+            </div>
+            <div class="game-log" id="game-log">> 系統已就緒。</div>
+        </div>
+    </div>
+
+<script src="https://www.gstatic.com/firebasejs/9.6.1/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.6.1/firebase-database-compat.js"></script>
+
+<script>
+
+// --- 這裡開始貼入你的設定 (這段放在 script 標籤內的最上方) ---
+const firebaseConfig = {
+    apiKey: "AIzaSyBOlLGVKRIsIH1hxqb5HmEWh0shNQRJ-Ck",
+    authDomain: "university-survival-fight.firebaseapp.com",
+    projectId: "university-survival-fight",
+    storageBucket: "university-survival-fight.firebasestorage.app",
+    messagingSenderId: "1043002568597",
+    appId: "1:1043002568597:web:ec0e1067fd33267642909c",
+    measurementId: "G-W3EG45PEWQ",
+    // 這是你的資料庫網址，我幫你補上了
+    databaseURL: "https://university-survival-fight-default-rtdb.firebaseio.com",
+
+};
+
+// 初始化雲端連線
+firebase.initializeApp(firebaseConfig);
+const db = firebase.database();
+
+let busExhaust = []; // 存放煙霧點的座標與透明度
+let lastSmokeTime = 0; // 紀錄上次噴氣的時間
+// 在 script 開頭加入
+let busPath = JSON.parse(localStorage.getItem('busPath')) || []; // 存放軌道座標點
+let busStatus = { 
+    currentSeg: 0, // 當前在哪一段路
+    progress: 0,   // 在該段路的進度 (0到1)
+    speed: 0.003   // 移動速度，數字愈小愈慢
+};
+
+const canvas = document.getElementById('bus-canvas');
+const ctx = canvas.getContext('2d');
+
+// 讓畫布大小等於圖片實際大小的函式
+function syncCanvasSize() {
+    const img = document.getElementById('main-map');
+    canvas.width = img.offsetWidth;
+    canvas.height = img.offsetHeight;
+}
+    
+    /* 🌟 核心修改：將所有資料初始化為空，改由登入後從雲端載入 */
+let isReg = false, 
+    currentUser = null, 
+    playerStats = {}, mapData = [],
+    scheduleData = {}, 
+    courseDeptDB = {}, 
+    currentMode = 'view', 
+    completedTasks = [];
+
+    function toggleAuth() {
+        isReg = !isReg;
+        document.getElementById('auth-title').innerText = isReg ? "註冊研究生" : "東海生存模擬器";
+        document.getElementById('reg-only').classList.toggle('hidden', !isReg);
+    }
+
+    async function handleAuth() {
+    const acc = document.getElementById('acc').value.trim();
+    const pwd = document.getElementById('pwd').value;
+    const msg = document.getElementById('auth-msg');
+    
+    // 原有的格式檢查 (不動)
+    if (!/^[A-Za-z0-9]+$/.test(acc)) return msg.innerText = "帳號限英數";
+    if (pwd.length < 6) return msg.innerText = "密碼至少6位";
+
+    // 🌟 改為從 Firebase 雲端獲取該帳號資料
+    let cloudSnapshot;
+    try {
+        cloudSnapshot = await db.ref('users/' + acc).once('value');
+    } catch (e) {
+        return msg.innerText = "連線失敗，請檢查網路";
+    }
+    const userData = cloudSnapshot.val();
+
+    if (isReg) {
+        // 註冊邏輯
+        if (userData) return msg.innerText = "帳號已被佔用";
+        const mood = document.getElementById('mood').value;
+        
+        // 註冊時初始化所有欄位 (維持你原本的內容)
+        const newRecord = { 
+            p: pwd, 
+            mood: mood, 
+            data: { 
+                energy: (mood === '😊' ? 120 : 100), 
+                study: 0, 
+                money: 500, 
+                maxEnergy: (mood === '😊' ? 120 : 100),
+                lastSleepDate: "", 
+                bankLastVisit: ""
+            },
+            schedule: {}, 
+            completed: [], 
+            courseDepts: {},
+            regDate: new Date().toLocaleDateString(), 
+            lastLogin: "" 
+        };
+
+        // 🌟 存入雲端
+        await db.ref('users/' + acc).set(newRecord);
+        alert("註冊成功！"); 
+        toggleAuth();
+    } else {
+        // 登入邏輯
+        if (userData && userData.p === pwd) {
+            currentUser = acc; 
+            playerStats = userData.data;
+            
+            // 🌟 你的補丁邏輯：自動補齊欄位 (不動)
+            if (playerStats.lastSleepDate === undefined) playerStats.lastSleepDate = "";
+            if (playerStats.bankLastVisit === undefined) playerStats.bankLastVisit = "";
+
+            scheduleData = userData.schedule || {};
+            completedTasks = userData.completed || [];
+            courseDeptDB = userData.courseDepts || {};
+            
+            // 執行後續遊戲邏輯 (傳入雲端資料包)
+            checkAllowance(userData);
+            startGame(acc, userData.mood, userData);
+        } else { 
+            msg.innerText = "密碼錯誤或帳號不存在"; 
+        }
+    }
+}
+
+    function checkAllowance(userObj) {
+    const today = new Date().toLocaleDateString();
+    
+    // 【第一道防線】檢查傳入的 userObj (現在是從雲端抓下來的資料)
+    // 如果今天已經領過，直接結束
+    if (userObj.lastLogin === today) return;
+
+    // --- 以下內容，一天保證只會跑「精確的一次」 ---
+
+    // 1. 金錢：領取每日生活費 (維持你的邏輯)
+    playerStats.money += 200;
+    
+    // 2. 學業：結算昨日成就
+    const yesterdayStudy = playerStats.study || 0;
+    playerStats.study = Math.floor(yesterdayStudy / 2); 
+    
+    // 3. 體力：每日首次登入補滿
+    playerStats.energy = playerStats.maxEnergy; 
+    
+    // 4. 任務：重置今日課程勾選狀態
+    completedTasks = []; 
+
+    // 【第二道防線】更新記憶體中的變數
+    userObj.lastLogin = today;
+
+    // 【第三道防線】🌟 強制同步到 Firebase 雲端 🌟
+    // 不等玩家手動存檔，立即鎖死今日領取狀態
+    if (currentUser) {
+        db.ref('users/' + currentUser).update({
+            "data": playerStats,          // 更新減半後的學業、補滿的體力、加好的錢
+            "lastLogin": today,           // 鎖定日期為今天
+            "completed": []               // 清空今日任務
+        }).then(() => {
+            console.log("☁️ 每日結算已同步至雲端");
+        }).catch(e => {
+            console.error("雲端結算失敗:", e);
+        });
+    }
+
+    // (備份) 同時更新一下本地紀錄
+    let localDB = JSON.parse(localStorage.getItem('th_sim_db') || '{}');
+    if (localDB[currentUser]) {
+        localDB[currentUser].data = playerStats;
+        localDB[currentUser].lastLogin = today;
+        localDB[currentUser].completed = [];
+        localStorage.setItem('th_sim_db', JSON.stringify(localDB));
+    }
+
+    addLog(`🌅 系統結算：學力保留 50% (${playerStats.study})，體力已回滿並領取 $200。`);
+}
+    function addCourseDept() {
+        const c = document.getElementById('course-input').value.trim();
+        const d = document.getElementById('dept-input').value.trim();
+        if(!c || !d) return alert("請輸入完整資料");
+        courseDeptDB[c] = d;
+        saveAll();
+        document.getElementById('course-input').value = "";
+        document.getElementById('dept-input').value = "";
+        refreshTodoList();
+        addLog(`📝 已建檔：${c} -> ${d}`);
+    }
+
+    function startGame(name, mood, userObj) {
+    document.getElementById('auth-box').style.display = 'none';
+    document.getElementById('main-game').style.display = 'flex';
+    document.getElementById('p-id').innerText = name;
+    
+loadCloudMapData();
+
+    // --- 新增權限控制邏輯 ---
+    const adminPanel = document.getElementById('admin-controls');
+    if (name === "000000") {
+        adminPanel.style.display = "block"; // 管理員看到按鈕
+    } else {
+        adminPanel.style.display = "none";  // 一般帳號隱藏按鈕
+        currentMode = 'view';               // 強制鎖定為冒險模式
+    }
+    // -----------------------
+
+    document.getElementById('real-date').innerText = new Date().toLocaleDateString();
+    const reg = new Date(userObj.regDate);
+    const diff = Math.ceil(Math.abs(new Date() - reg) / (1000 * 60 * 60 * 24)) || 1;
+    document.getElementById('survival-day').innerText = diff;
+    
+applyOfflineRecovery(userObj);
+
+    updateUI(); 
+    initSchedule(); 
+    refreshTodoList(); 
+    initMap();
+    driveBus();
+// 在 startGame 裡面呼叫一次
+setInterval(() => {
+    if (playerStats.energy < playerStats.maxEnergy) {
+        playerStats.energy = Math.min(playerStats.maxEnergy, playerStats.energy + 10);
+        updateUI();
+        saveAll(); // 自動存檔一次
+        addLog("⏳ 經過了 30 分鐘，體力自動恢復了 10 點。");
+    }
+}, 30 * 60 * 1000); // 30 分鐘的毫秒數
+}
+// 在 startGame 函式的末尾加入這段
+function applyOfflineRecovery(userObj) {
+    // 1. 【保險路徑】先抓出正確的時間
+    const lastTime = userObj.lastSaveTime || (userObj.data && userObj.data.lastSaveTime);
+    
+    // 2. 【檢查點】改為檢查抓出來的 lastTime
+    if (!lastTime) return;
+
+    const now = Date.now();
+    // 3. 【計算時差】改用 lastTime 來減
+    const msDiff = now - lastTime; 
+    const minutesDiff = Math.floor(msDiff / (1000 * 60)); 
+
+    // 每 30 分鐘恢復一次
+    if (minutesDiff >= 30) {
+        const recoveryUnits = Math.floor(minutesDiff / 30); 
+        const totalRecovered = recoveryUnits * 10; 
+        
+        const oldEnergy = playerStats.energy;
+        // 更新體力
+        playerStats.energy = Math.min(playerStats.maxEnergy, playerStats.energy + totalRecovered);
+        
+        // 如果有補到體力，才噴 Log 並更新畫面
+        if (totalRecovered > 0 && oldEnergy < playerStats.maxEnergy) {
+            addLog(`⏳ 離線期間休息了 ${minutesDiff} 分鐘，體力恢復了 ${totalRecovered} 點。`);
+            // 4. 【關鍵】一定要加這行，不然登入後看到的數值不會變！
+            updateUI(); 
+        }
+    }
+}
+
+// 監聽點擊事件，點一下切換展開/縮回
+document.querySelector('.game-log').addEventListener('click', function() {
+    this.classList.toggle('expanded');
+});
+function clearBusPath() {
+    if(confirm("確定要清除所有公車軌道嗎？")) {
+        busPath = [];
+        localStorage.removeItem('busPath');
+        addLog("🚫 軌道已清除，公車停駛中。");
+    }
+}
+let musicPlaying = false;
+
+function toggleMusic() {
+    const bgm = document.getElementById('gameBGM');
+    const btn = document.getElementById('music-btn');
+
+    if (!musicPlaying) {
+        // 設定音量 30% (比較不會吵)
+        bgm.volume = 0.3; 
+        bgm.play().catch(e => {
+            alert("請先點擊頁面任何地方，瀏覽器才准播放音樂喔！");
+        });
+        btn.innerText = "🎵 音樂：播放中";
+        btn.style.background = "#e1f5fe";
+    } else {
+        bgm.pause();
+        btn.innerText = "🔈 音樂：已暫停";
+        btn.style.background = "rgba(255,255,255,0.8)";
+    }
+    musicPlaying = !musicPlaying;
+}
+// 1. 提交留言到雲端 Firebase
+function postComment() {
+    const input = document.getElementById('comment-input');
+    const msg = input.value.trim();
+    
+    // 檢查有沒有登入跟有沒有打字
+    if (!currentUser) return alert("登入後才能在校園留言喔！");
+    if (!msg) return;
+
+    const locName = document.getElementById('modal-title').innerText;
+    
+    // 將資料推送到 Firebase 的 'comments/地標名稱' 路徑下
+    db.ref('comments/' + locName).push({
+        user: currentUser,
+        text: msg,
+        time: new Date().toLocaleString()
+    });
+
+    input.value = ""; // 清空輸入框
+    addLog(`💬 訊息已成功上傳雲端：${locName}`);
+}
+
+// 2. 監聽雲端資料 (有人留言就會自動更新)
+function loadComments(locName) {
+    const list = document.getElementById('comment-list');
+    if (!list) return;
+
+    // 告訴 Firebase：只要這個地點有新留言，就通知我
+    db.ref('comments/' + locName).on('value', (snapshot) => {
+        const data = snapshot.val();
+        if (!data) {
+            list.innerHTML = "<div style='color:#999; text-align:center;'>目前這裡還沒有人留下足跡...</div>";
+            return;
+        }
+
+        // 把雲端抓回來的物件轉成陣列並顯示
+        const comments = Object.values(data);
+        list.innerHTML = comments.map(c => `
+            <div style="margin-bottom: 8px; padding-bottom: 5px; border-bottom: 1px solid #eee;">
+                <b style="color: #2980b9;">${c.user}：</b><span>${c.text}</span>
+                <div style="font-size: 10px; color: #999;">${c.time}</div>
+            </div>
+        `).reverse().join(''); // 最新的留言放上面
+    });
+}
+    function refreshTodoList() {
+        const todoList = document.getElementById('todo-list');
+        let day = new Date().getDay();
+        if (day === 0 || day === 6) day = 1; 
+        const dayMap = ["日", "一", "二", "三", "四", "五", "六"];
+        document.getElementById('today-name').innerText = dayMap[day];
+
+        todoList.innerHTML = '';
+        const periods = ["1", "2", "3", "4", "4.5", "5", "6", "7", "8", "9"];
+        
+        periods.forEach(p => {
+            const key = `${day}-${p}`; // 唯一的節次 ID
+            const taskName = (scheduleData[key] || "").trim();
+            const isDone = completedTasks.includes(key); // 改用 Key 判定
+            const deptName = (taskName !== "" && courseDeptDB[taskName]) ? ` (${courseDeptDB[taskName]})` : "";
+            
+            const item = document.createElement('div');
+            item.className = 'todo-item';
+            item.style.cursor = "default";
+            const textStyle = isDone ? 'color: var(--success); font-weight: bold;' : 'color: #333;';
+            
+            item.innerHTML = `
+                <span style="min-width: 60px; font-weight: bold;">第 ${p} 節：</span>
+                <span style="${textStyle}">${taskName}${deptName}</span>
+                <span style="margin-left: auto; color: var(--success); font-weight: bold;">${isDone ? '✅' : ''}</span>
+            `;
+
+            if (taskName !== "") {
+                            }
+            todoList.appendChild(item);
+        });
+    }
+
+    function handleAction(loc) {
+showModal(loc.name, loc.desc || "暫無介紹", loc.imgUrl, loc.mapQuery);        // 1. 基礎體力檢查
+        if (playerStats.energy < 5 && loc.type !== 'sleep') return addLog("體力不足！");
+        
+        const locName = loc.name.trim(); // 點擊的地標名稱 (例如: "工學院")
+        let day = new Date().getDay(); 
+        if (day === 0 || day === 6) day = 1; // 週末預設週一
+        
+        const periods = ["1", "2", "3", "4", "4.5", "5", "6", "7", "8", "9"];
+        let targetKey = null;
+
+        // 2. 核心邏輯：透過「院所名稱」或「課名直配」來完成任務
+        for (let p of periods) {
+            const key = `${day}-${p}`;
+            const taskName = (scheduleData[key] || "").trim();
+            
+            if (taskName !== "" && !completedTasks.includes(key)) {
+                // 條件 A: 地標名稱 直接等於 課名 (例如地標叫 "微積分")
+                const isDirectMatch = (taskName === locName);
+                
+                // 條件 B: 課名 對應的 院所 等於 地標名稱 (例如地標叫 "工學院"，而微積分屬於工學院)
+                const isDeptMatch = (courseDeptDB[taskName] === locName);
+                
+                if (isDirectMatch || isDeptMatch) {
+                    targetKey = key;
+                    break; // 找到今日第一堂符合的課就跳出，達成「按一次勾一格」
+                }
+            }
+        }
+
+        // 3. 執行勾選
+        if (targetKey) {
+            completedTasks.push(targetKey);
+            const finalTaskName = scheduleData[targetKey].trim();
+            refreshTodoList();
+            addLog(`✅ 任務完成：抵達 ${locName}，已簽到「${finalTaskName}」！`);
+        } else {
+            // 如果點了院所但沒課，可以給個提示（選配）
+            if (loc.type === 'study') addLog(`📍 你來到了 ${locName}，但目前沒有相關課程。`);
+        }
+
+        // --- 數值獎懲邏輯完整版 ---
+
+if (loc.type === 'study') { 
+    // 檢查學業是否已達上限 120
+    if (playerStats.study >= 120) {
+        addLog("🧠 大腦已達極限！今日學業已滿 120，再讀下去會燒掉，快去休息吧。");
+        return; // 直接中斷，不扣體力也不加分
+    }
+
+    // 執行學習
+    playerStats.energy -= 20; 
+    playerStats.study += 10; 
+
+    // 如果學習後超過 120，強制修正回 120
+    if (playerStats.study > 120) playerStats.study = 120;
+
+    addLog(`📚 在 ${locName} 努力讀書，學力上升了！(今日累積: ${playerStats.study}/120)`);
+    
+    // 過勞懲罰預告：如果體力太低還勉強讀書
+    if (playerStats.energy < 10) {
+        addLog("⚠️ 警告：你快要累倒了！體力極低，學習效率正在下降。");
+    }
+}else if (loc.type === 'eat') { 
+    playerStats.energy = Math.min(playerStats.maxEnergy, playerStats.energy + 30); 
+    playerStats.money -= 100; 
+    addLog(`🍴 在 ${locName} 用餐，體力恢復了 (-$100)。`);
+} else if (loc.type === 'sleep') { 
+    const today = new Date().toLocaleDateString();
+
+    if (playerStats.lastSleepDate === today) {
+    addLog("🛌 你今天已經休息過了...");
+    // 🚩 補上後面的參數
+    showModal(loc.name, "一天只能午休一次喔！...", loc.imgUrl, loc.mapQuery);
+} else {
+    playerStats.energy = playerStats.maxEnergy; 
+    playerStats.lastSleepDate = today; 
+    addLog("🛌 回到宿舍休息...");
+    // 🚩 這裡也要補
+    showModal(loc.name, "你躺在床上小睡了一下...", loc.imgUrl, loc.mapQuery);
+}
+} else if (loc.type === 'sport') {
+    playerStats.energy -= 10;
+    addLog(`🏃 在 ${locName} 運動，流點汗真舒服 (-10 體力)。`);
+} else if (loc.type === 'buy') {
+    playerStats.money -= 100;
+    addLog(`🛍️ 在 ${locName} 花了一些錢幹大事 (-$100)。`);
+} else if (loc.type === 'place') {
+    playerStats.money -= 50;
+    addLog(`📍 抵達特殊地點 ${locName}，開銷 (-$50)。`);
+}else if (loc.type === 'money') {
+    const today = new Date().toLocaleDateString();
+
+    // 檢查今天是否已經去過銀行
+    if (playerStats.bankLastVisit === today) {
+        addLog(`🏦 ${locName}：今天已經辦過業務了，請明天再來。`);
+    } else {
+        const chance = Math.random();
+        if (chance < 0.5) {
+            playerStats.money -= 100;
+            addLog(`⚠️ 糟糕！在 ${locName} 遇到詐騙，損失了 $100。`);
+        } else {
+            playerStats.money += 50;
+            addLog(`❤️ 溫馨！在 ${locName} 收到媽媽寄的 $50。`);
+        }
+        playerStats.bankLastVisit = today; // 紀錄今日已造訪
+    }
+} 
+// --- 新增的打工邏輯 ---
+else if (loc.type === 'work') {
+    if (playerStats.energy < 30) {
+        addLog("❌ 體力低於 30，太累了沒辦法打工...");
+    } else {
+        playerStats.energy -= 20;
+        playerStats.money += 150;
+        addLog(`💰 在 ${locName} 辛苦打工，賺到了 $150 (體力 -20)。`);
+    }
+}
+        
+        updateUI(); 
+        saveAll();
+    }
+// 更新後的 showModal，接收更多參數
+function showModal(name, desc, imgUrl, mapQuery) {
+    document.getElementById('modal-title').innerText = name;
+    document.getElementById('modal-desc').innerText = desc;
+    
+    // --- 處理照片 ---
+    const imgEl = document.getElementById('modal-img');
+    const noImgEl = document.getElementById('modal-no-img');
+    
+    if (imgUrl && imgUrl.trim() !== "") {
+        imgEl.src = imgUrl;
+        imgEl.style.display = 'block';
+        noImgEl.style.display = 'none';
+    } else {
+        imgEl.style.display = 'none';
+        noImgEl.style.display = 'flex'; // 顯示預設圖示
+    }
+    
+    // --- 處理 Google Maps 連結 ---
+    const linkEl = document.getElementById('modal-map-link');
+    if (mapQuery) {
+        // 生成搜尋連結
+        linkEl.href = `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(mapQuery)}`;
+        linkEl.style.display = 'flex';
+    } else {
+        // 如果沒有 mapQuery，預設使用名稱搜尋
+        linkEl.href = `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(name + " 東海大學")}`;
+        linkEl.style.display = 'flex';
+    }
+    
+    // 顯示彈窗與遮罩
+    document.getElementById('info-modal').style.display = 'block';
+    document.getElementById('modal-overlay').style.display = 'block';
+// 每次打開彈窗，就去雲端抓這個地點的留言
+loadComments(name);
+}
+function closeModal() {
+    document.getElementById('info-modal').style.display = 'none';
+    document.getElementById('modal-overlay').style.display = 'none';
+}
+    function initMap() {
+    const layer = document.getElementById('marker-layer');
+    layer.innerHTML = '';
+    mapData.forEach((item, index) => {
+        const area = document.createElement('div');
+        area.className = 'click-area';
+        area.style.left = item.x + '%'; 
+        area.style.top = item.y + '%';
+        area.style.width = '6%'; 
+        area.style.aspectRatio = '1/1';
+
+        if (currentMode === 'view') {
+            // --- 冒險模式：隱藏框線，點擊觸發動作與彈窗 ---
+            area.style.border = "none";
+            area.style.background = "transparent";
+            area.onclick = (e) => { 
+                e.stopPropagation(); 
+                handleAction(item); 
+            };
+        } else if (currentMode === 'edit') {
+            // --- 編輯模式：顯示黃色虛線框，點擊進入二次編輯 ---
+            area.style.border = "2px dashed #f1c40f"; 
+            area.style.background = "rgba(241, 196, 15, 0.2)";
+            
+            area.onclick = (e) => { 
+                e.stopPropagation(); 
+                // 彈出選單詢問
+                const choice = confirm(`地標：【${item.name}】\n按 [確定]：修改地標資訊 (地址、照片、介紹)\n按 [取消]：刪除此地標`);
+                
+                if (choice) {
+                    editExistingMarker(index); // 呼叫下方的編輯函式
+                } else {
+                    if(confirm(`確定要永久刪除「${item.name}」嗎？`)) {
+                        mapData.splice(index, 1); 
+                        saveMapData(); 
+                        initMap(); 
+                        addLog(`🗑️ 已移除地標：${item.name}`);
+                    }
+                }
+            };
+
+            // 輔助小紅點，方便對準
+            const dot = document.createElement('div');
+            dot.className = 'dot-hint'; 
+            dot.style.left = item.x + '%'; 
+            dot.style.top = item.y + '%';
+            layer.appendChild(dot);
+        }
+        layer.appendChild(area);
+    });
+}
+function editExistingMarker(index) {
+    const item = mapData[index];
+    
+    // 帶入舊資料作為 prompt 的預設值
+    const newName = prompt("修改地標名稱：", item.name);
+    if (!newName) return; // 按取消就中斷
+
+    const newType = prompt("修改類型 (study/eat/work/sleep/money/sport/buy/place)：", item.type || "study");
+    const newDesc = prompt("修改詳細介紹：", item.desc || "");
+    const newImg = prompt("修改照片網址：", item.imgUrl || "");
+    
+    // 🌟 新增：詢問超連結網址
+    const newUrl = prompt("修改超連結網址 (選填，不需網址請留空)：", item.url || "");
+    
+    const newMap = prompt("修改 Google Maps 關鍵字：", item.mapQuery || newName);
+
+    // 更新資料陣列
+    mapData[index] = {
+        ...item, // 保留座標 x, y
+        name: newName,
+        type: newType,
+        desc: newDesc,
+        imgUrl: newImg,
+        url: newUrl,     // 🌟 存入新網址
+        mapQuery: newMap
+    };
+
+    saveMapData();
+    initMap();
+    addLog(`🛠️ 已更新地標：${newName}`);
+}
+function mapClicked(e) {
+    const rect = document.getElementById('main-map').getBoundingClientRect();
+    const x = ((e.clientX - rect.left) / rect.width) * 100;
+    const y = ((e.clientY - rect.top) / rect.height) * 100;
+
+    if (currentMode === 'edit') {
+        const name = prompt("新增地標名稱：");
+        if(name) {
+            const type = prompt("類型：", "study");
+            const desc = prompt("詳細介紹：", "");
+            const imgUrl = prompt("照片網址：", "");
+            
+            // 🌟 新增：輸入超連結網址
+            const url = prompt("超連結網址 (選填)：", "");
+            
+            const mapQuery = prompt("Google Maps 關鍵字：", name);
+            
+            // 🌟 這裡把 url 也推入 mapData
+            mapData.push({ x, y, name, type, desc, imgUrl, url, mapQuery });
+            saveMapData(); 
+            initMap();
+            addLog(`📍 新增了地標：${name}`);
+        }
+    } 
+    else if (currentMode === 'path') {
+        busPath.push({ x, y });
+        localStorage.setItem('busPath', JSON.stringify(busPath));
+        addLog("📍 已記錄一個公車軌道點");
+    }
+}function addLog(text) {
+    const logContainer = document.querySelector('.game-log');
+    if (!logContainer) return;
+
+    const newLog = document.createElement('p');
+    
+    // 🌟 調整重點：font-weight 改為 900 (極粗)，並確保 transition 有作用
+    newLog.style.cssText = `
+        color: #007bff !important; 
+        font-weight: 900 !important; 
+        margin: 0; 
+        padding: 8px 15px; 
+        border-bottom: 1px solid #eee; 
+        display: block; 
+        width: 100%; 
+        transition: color 2s ease, font-weight 2s ease;
+    `;
+    
+    newLog.innerText = `> ${text}`;
+
+    logContainer.prepend(newLog);
+
+    // 3 秒後自動變回普通的灰色與正常粗細
+    setTimeout(() => {
+        newLog.style.color = "#888888"; 
+        newLog.style.fontWeight = "normal"; // 這裡會變回 400
+    }, 5000);
+}function driveBus() {
+    if (busPath.length < 2) return requestAnimationFrame(driveBus);
+
+    syncCanvasSize(); 
+    ctx.clearRect(0, 0, canvas.width, canvas.height); 
+
+    // 計算公車當前位置
+    let p1 = busPath[busStatus.currentSeg];
+    let p2 = busPath[(busStatus.currentSeg + 1) % busPath.length];
+    let curX = (p1.x + (p2.x - p1.x) * busStatus.progress) / 100 * canvas.width;
+    let curY = (p1.y + (p2.y - p1.y) * busStatus.progress) / 100 * canvas.height;
+
+    // --- 新增：產生煙霧邏輯 ---
+    let now = Date.now();
+    if (now - lastSmokeTime > 500) { // 每 0.5 秒噴一次氣，效果較連貫
+        busExhaust.push({ x: curX, y: curY, alpha: 1.0 });
+        lastSmokeTime = now;
+    }
+
+    // --- 新增：繪製並更新煙霧 ---
+    ctx.font = "20px serif";
+    for (let i = busExhaust.length - 1; i >= 0; i--) {
+        let smoke = busExhaust[i];
+        ctx.globalAlpha = smoke.alpha;
+        // 繪製煙霧符號，稍微偏移一點點讓它在公車後方
+        ctx.fillText("💨", smoke.x, smoke.y + 10); 
+        
+        smoke.alpha -= 0.01; // 逐漸消失
+        if (smoke.alpha <= 0) {
+            busExhaust.splice(i, 1); // 徹底消失後移除
+        }
+    }
+    ctx.globalAlpha = 1.0; // 重置透明度，避免影響到公車本體
+
+    // --- 原有的繪製公車邏輯 ---
+    ctx.font = "36px serif"; 
+    ctx.textAlign = "center";
+    ctx.textBaseline = "middle";
+    ctx.shadowColor = "rgba(0,0,0,0.3)";
+    ctx.shadowBlur = 4;
+    ctx.fillText("🚌", curX, curY);
+
+    // 更新進度
+    busStatus.progress += busStatus.speed;
+    if (busStatus.progress >= 1) {
+        busStatus.progress = 0;
+        busStatus.currentSeg = (busStatus.currentSeg + 1) % busPath.length;
+    }
+
+    requestAnimationFrame(driveBus);
+}    function initSchedule() {
+        const tbody = document.getElementById('schedule-body');
+        const periods = ["1", "2", "3", "4", "4.5", "5", "6", "7", "8", "9"];
+        tbody.innerHTML = '';
+        periods.forEach(p => {
+            let row = `<tr><td style="background:#f8f9fa; font-weight:bold;">${p}</td>`;
+            for(let d=1; d<=5; d++) row += `<td class="${p==='4.5'?'lunch-period':''}"><input type="text" data-key="${d}-${p}" value="${scheduleData[d+'-'+p]||''}" onchange="updateSched(this)"></td>`;
+            tbody.innerHTML += row + "</tr>";
+        });
+    }
+
+    function updateSched(input) { scheduleData[input.dataset.key] = input.value; saveAll(); refreshTodoList(); }
+    function updateUI() {
+    document.getElementById('energy-info').innerText = `${playerStats.energy}/${playerStats.maxEnergy}`;
+    document.getElementById('energy-bar').style.width = (playerStats.energy / playerStats.maxEnergy * 100) + "%";
+    
+    // 更新學業條：以 120 為 100% 基準
+    const studyVal = playerStats.study || 0;
+    document.getElementById('study-info').innerText = `${studyVal}/120`;
+    
+    const studyBar = document.getElementById('study-bar');
+    studyBar.style.width = (studyVal / 120 * 100) + "%";
+    
+    // 如果學業超過 100 (進入衝刺期)，改變顏色提醒不要太勞累
+    if (studyVal > 100) {
+        studyBar.classList.add('study-overwork');
+    } else {
+        studyBar.classList.remove('study-overwork');
+    }
+
+    document.getElementById('money-val').innerText = playerStats.money;
+}
+    function setMode(m) { currentMode = m; initMap(); }
+// 從雲端抓取地圖地標
+async function loadCloudMapData() {
+    const snapshot = await db.ref('global/mapData').once('value');
+    const cloudData = snapshot.val();
+    if (cloudData) {
+        mapData = cloudData;
+        initMap(); // 抓到後重新畫一次地圖
+        console.log("✅ 雲端地圖載入成功");
+    }
+}
+    function saveMapData() {
+    // 🌟 1. 推送到 Firebase 雲端全域路徑
+    // 這樣不論換哪個瀏覽器，地標資料都會同步
+    db.ref('global/mapData').set(mapData)
+    .then(() => {
+        console.log("📍 地圖地標已同步至雲端");
+    })
+    .catch((error) => {
+        console.error("地圖同步失敗:", error);
+    });
+
+    // 🌟 2. 依然保留一份在本地 (原本的邏輯)
+    localStorage.setItem('campusMapData', JSON.stringify(mapData));
+}
+    function saveAll() {
+    if (!currentUser) return;
+
+    // 🌟 1. 準備存檔資料包 (維持你原本的所有欄位)
+    const now = Date.now();
+    const saveData = {
+        lastSaveTime: now,
+        data: playerStats,
+        schedule: scheduleData,
+        completed: completedTasks,
+        courseDepts: courseDeptDB
+    };
+
+    // 🌟 2. 推送到 Firebase 雲端
+    // 使用 update 而不是 set，這樣才不會不小心蓋掉帳號密碼
+    db.ref('users/' + currentUser).update(saveData)
+    .then(() => {
+        console.log("☁️ 自動存檔成功 (Firebase)");
+    })
+    .catch((error) => {
+        console.error("雲端存檔失敗:", error);
+    });
+
+    // 🌟 3. 同時保留一份在本地 (雙重保險，你原本的邏輯)
+    let localDB = JSON.parse(localStorage.getItem('th_sim_db') || '{}');
+    if (localDB[currentUser]) {
+        localDB[currentUser] = { ...localDB[currentUser], ...saveData };
+        localStorage.setItem('th_sim_db', JSON.stringify(localDB));
+    }
+}
+    function saveAndExit() { saveAll(); location.reload(); }
+</script>
+</body>
+</html>
