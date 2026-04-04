@@ -684,12 +684,10 @@ function postComment() {
     addLog(`💬 訊息已成功上傳雲端：${locName}`);
 }
 
-// 2. 監聽雲端資料 (有人留言就會自動更新)
 function loadComments(locName) {
     const list = document.getElementById('comment-list');
     if (!list) return;
 
-    // 告訴 Firebase：只要這個地點有新留言，就通知我
     db.ref('comments/' + locName).on('value', (snapshot) => {
         const data = snapshot.val();
         if (!data) {
@@ -697,14 +695,51 @@ function loadComments(locName) {
             return;
         }
 
-        // 把雲端抓回來的物件轉成陣列並顯示
-        const comments = Object.values(data);
-        list.innerHTML = comments.map(c => `
-            <div style="margin-bottom: 8px; padding-bottom: 5px; border-bottom: 1px solid #eee;">
-                <b style="color: #2980b9;">${c.user}：</b><span>${c.text}</span>
-                <div style="font-size: 10px; color: #999;">${c.time}</div>
-            </div>
-        `).reverse().join(''); // 最新的留言放上面
+        // 將物件轉為陣列，並保留 Firebase 的 key (用來更新釘選狀態)
+        const comments = Object.keys(data).map(key => ({
+            id: key,
+            ...data[key]
+        }));
+
+        // 🌟 排序邏輯：優先排 pinned (true > false)，其次排時間 (最新在上)
+        comments.sort((a, b) => {
+            if (a.pinned && !b.pinned) return -1;
+            if (!a.pinned && b.pinned) return 1;
+            return new Date(b.time) - new Date(a.time); // 原本的最新在上
+        });
+
+        list.innerHTML = comments.map(c => {
+            // 🌟 如果是管理員 000000，顯示釘選按鈕
+            const pinBtn = (currentUser === "000000") 
+                ? `<span onclick="togglePin('${locName}', '${c.id}', ${c.pinned || false})" style="cursor:pointer; margin-left:10px; font-size:12px;">${c.pinned ? '📍取消釘選' : '📌釘選'}</span>` 
+                : "";
+            
+            // 🌟 釘選留言加個背景色或標籤，讓它更明顯
+            const pinStyle = c.pinned ? "background: #fff9db; border-left: 3px solid #f1c40f; padding-left: 8px;" : "";
+
+            return `
+                <div style="margin-bottom: 8px; padding-bottom: 5px; border-bottom: 1px solid #eee; ${pinStyle}">
+                    <b style="color: #2980b9;">${c.user}：</b><span>${c.text}</span>
+                    ${c.pinned ? '<span style="font-size:10px; color:#f1c40f; font-weight:bold;"> [已釘選]</span>' : ''}
+                    ${pinBtn}
+                    <div style="font-size: 10px; color: #999;">${c.time}</div>
+                </div>
+            `;
+        }).join(''); 
+    });
+}
+function togglePin(locName, commentId, currentStatus) {
+    if (currentUser !== "000000") return; // 二次檢查權限
+
+    // 切換狀態：如果是 true 就變 null (刪除該欄位)，如果是 false 就變 true
+    const newStatus = currentStatus ? null : true;
+
+    db.ref(`comments/${locName}/${commentId}`).update({
+        pinned: newStatus
+    }).then(() => {
+        addLog(newStatus ? "📌 已釘選留言" : "📍 已取消釘選");
+    }).catch(e => {
+        console.error("釘選失敗:", e);
     });
 }
     function refreshTodoList() {
