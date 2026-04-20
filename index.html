@@ -750,7 +750,7 @@ function togglePin(locName, commentId, currentStatus) {
         document.getElementById('today-name').innerText = dayMap[day];
 
         todoList.innerHTML = '';
-        const periods = ["1", "2", "3", "4", "4.5", "5", "6", "7", "8", "9"];
+        const periods = ["1", "2", "3", "4", "4_5", "5", "6", "7", "8", "9"];
         
         periods.forEach(p => {
             const key = `${day}-${p}`; // 唯一的節次 ID
@@ -783,7 +783,7 @@ showModal(loc.name, loc.desc || "暫無介紹", loc.imgUrl, loc.mapQuery);      
         let day = new Date().getDay(); 
         if (day === 0 || day === 6) day = 1; // 週末預設週一
         
-        const periods = ["1", "2", "3", "4", "4.5", "5", "6", "7", "8", "9"];
+        const periods = ["1", "2", "3", "4", "4_5", "5", "6", "7", "8", "9"];
         let targetKey = null;
 
         // 2. 核心邏輯：透過「院所名稱」或「課名直配」來完成任務
@@ -1126,15 +1126,27 @@ function mapClicked(e) {
 
     requestAnimationFrame(driveBus);
 }    function initSchedule() {
-        const tbody = document.getElementById('schedule-body');
-        const periods = ["1", "2", "3", "4", "4.5", "5", "6", "7", "8", "9"];
-        tbody.innerHTML = '';
-        periods.forEach(p => {
-            let row = `<tr><td style="background:#f8f9fa; font-weight:bold;">${p}</td>`;
-            for(let d=1; d<=5; d++) row += `<td class="${p==='4.5'?'lunch-period':''}"><input type="text" data-key="${d}-${p}" value="${scheduleData[d+'-'+p]||''}" onchange="updateSched(this)"></td>`;
-            tbody.innerHTML += row + "</tr>";
-        });
-    }
+    const tbody = document.getElementById('schedule-body');
+    // 陣列統一使用 4_5
+    const periods = ["1", "2", "3", "4", "4_5", "5", "6", "7", "8", "9"];
+    tbody.innerHTML = '';
+    
+    periods.forEach(p => {
+        // 直接用 p (4_5) 當作左側標籤
+        let row = `<tr><td style="background:#f8f9fa; font-weight:bold;">${p}</td>`;
+        
+        for(let d=1; d<=5; d++) {
+            // class 判斷也同步改成 4_5
+            row += `<td class="${p === '4_5' ? 'lunch-period' : ''}">
+                <input type="text" 
+                       data-key="${d}-${p}" 
+                       value="${scheduleData[d + '-' + p] || ''}" 
+                       onchange="updateSched(this)">
+            </td>`;
+        }
+        tbody.innerHTML += row + "</tr>";
+    });
+}
 
     function updateSched(input) { scheduleData[input.dataset.key] = input.value; saveAll(); refreshTodoList(); }
     function updateUI() {
